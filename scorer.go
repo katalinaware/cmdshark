@@ -15,6 +15,26 @@ type Scorer struct {
 	assignPattern     *regexp.Regexp
 	envRefPattern     *regexp.Regexp
 	redirectPattern   *regexp.Regexp
+	
+	// Cached config to avoid repeated creation
+	cachedConfig      *Config
+	
+	// Pre-compiled patterns for false positive detection
+	binaryPatterns     []*regexp.Regexp
+	garbagePatterns    []*regexp.Regexp
+	incompletePatterns []*regexp.Regexp
+	naturalPatterns    []*regexp.Regexp
+	htmlCSSPatterns    []*regexp.Regexp
+	configPatterns     []*regexp.Regexp
+	programmingPatterns []*regexp.Regexp
+	optionPattern      *regexp.Regexp
+	pathPattern        *regexp.Regexp
+	needsQuotingPattern *regexp.Regexp
+	servicePattern     *regexp.Regexp
+	upperSeqPattern    *regexp.Regexp
+	digitPattern       *regexp.Regexp
+	letterPattern      *regexp.Regexp
+	specialCharPattern *regexp.Regexp
 }
 
 type CommandFeatures struct {
@@ -28,6 +48,7 @@ type CommandFeatures struct {
 }
 
 func NewScorer() Scorer {
+	config := newDefaultConfig()
 	return Scorer{
 		lexer:            NewLexer(),
 		helpPattern:      regexp.MustCompile(`^(?:Usage:|usage:)`),
@@ -37,6 +58,22 @@ func NewScorer() Scorer {
 		assignPattern:    regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=.*`),
 		envRefPattern:    regexp.MustCompile(`\$[{(]?[A-Za-z_][A-Za-z0-9_]*[)}]?`),
 		redirectPattern:  regexp.MustCompile(`[><]`),
+		cachedConfig:     &config,
+		binaryPatterns:   compileBinaryPatterns(),
+		garbagePatterns:  compileGarbagePatterns(),
+		incompletePatterns: compileIncompletePatterns(),
+		naturalPatterns:  compileNaturalPatterns(),
+		htmlCSSPatterns:  compileHTMLCSSPatterns(),
+		configPatterns:   compileConfigPatterns(),
+		programmingPatterns: compileProgrammingPatterns(),
+		optionPattern:    regexp.MustCompile(`\s-[a-zA-Z]`),
+		pathPattern:      regexp.MustCompile(`(^| )/|(\./)`),
+		needsQuotingPattern: regexp.MustCompile(`\s|[|;&><(){}]`),
+		servicePattern:   regexp.MustCompile(`^\w+\s+\d+/(tcp|udp)(\s+\w+)?$`),
+		upperSeqPattern:  regexp.MustCompile(`[A-Z]{2,}`),
+		digitPattern:     regexp.MustCompile(`[0-9]`),
+		letterPattern:    regexp.MustCompile(`[a-zA-Z]`),
+		specialCharPattern: regexp.MustCompile(`[^a-zA-Z0-9]`),
 	}
 }
 
@@ -182,11 +219,10 @@ func (s *Scorer) calculateInlineConfidence(features CommandFeatures, command str
 		return 0.0
 	}
 	
-	config := newDefaultConfig()
-	base := config.MinConfidence
+	base := s.cachedConfig.MinConfidence
 	
-	hasOption := regexp.MustCompile(`\s-[a-zA-Z]`).MatchString(command)
-	hasPath := regexp.MustCompile(`(^| )/|(\./)`).MatchString(command)
+	hasOption := s.optionPattern.MatchString(command)
+	hasPath := s.pathPattern.MatchString(command)
 	
 	if hasOption {
 		base += 0.1
@@ -374,8 +410,7 @@ func (s *Scorer) isCommonFalsePositive(command string) bool {
 }
 
 func (s *Scorer) isServiceProtocolDef(command string) bool {
-	servicePattern := regexp.MustCompile(`^\w+\s+\d+/(tcp|udp)(\s+\w+)?$`)
-	return servicePattern.MatchString(strings.TrimSpace(command))
+	return s.servicePattern.MatchString(strings.TrimSpace(command))
 }
 
 func (s *Scorer) isBareCommand(command string) bool {
@@ -428,10 +463,9 @@ func (s *Scorer) isBareCommand(command string) bool {
 	}
 	
 	if len(tokens) > 8 {
-		config := newDefaultConfig()
 		bareCommandCount := 0
 		for _, token := range tokens {
-			if config.Heads[strings.ToLower(token)] {
+			if s.cachedConfig.Heads[strings.ToLower(token)] {
 				bareCommandCount++
 			}
 		}
@@ -480,28 +514,7 @@ func (s *Scorer) isBinaryGarbageCommand(command string) bool {
 }
 
 func (s *Scorer) hasRandomBinaryPatterns(command string) bool {
-	binaryPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`[/@#$%^&*]{3,}`),
-		regexp.MustCompile(`[A-Za-z0-9]{1}[@#$%^&*~`+"`"+`]{2,}[A-Za-z0-9]`),
-		regexp.MustCompile(`\w[<>|&$@#%^*~`+"`"+`]{2,}\w`),
-		regexp.MustCompile(`[/@]\w{1,3}[@#$%^&*~`+"`"+`|<>]{2,}`),
-		regexp.MustCompile(`\b[A-Za-z0-9]{1,2}[|<>&@#$%^*~`+"`"+`]{2,}[A-Za-z0-9]{1,2}\b`),
-		regexp.MustCompile(`^/[^/\s]*[@#$%^&*~`+"`"+`|<>=]{2,}`),
-		regexp.MustCompile(`\w+[}]{2,}\w*[{]{2,}\w*`),
-		regexp.MustCompile(`[A-Z]{1,3}[0-9]{1,3}[A-Z]{1,3}`),
-		
-		regexp.MustCompile(`/[a-z0-9]{1,3}\s+[^a-zA-Z\s]{2,}`),
-		regexp.MustCompile(`[^a-zA-Z\s]{3,}[\s]+[^a-zA-Z\s]{2,}`),
-		regexp.MustCompile(`[*\(\)\[\]\\<>]{2,}`),
-		regexp.MustCompile(`[0-9]{2,}[a-zA-Z]{1,2}[0-9a-zA-Z*\^\$\(\)]{2,}`),
-		regexp.MustCompile(`\w{1,2}[*\^\$\(\)\[\]\\]{2,}\w{1,2}`),
-		regexp.MustCompile(`[/{]\s*[%,\*\^\$\(\)\[\]]{2,}`),
-		regexp.MustCompile(`[a-zA-Z]{1,2}[0-9\*\$\^\(\)\[\]\\]{3,}`),
-		regexp.MustCompile(`\$[a-zA-Z]{2,}[0-9\*\^\(\)\[\]\\]{2,}`),
-		regexp.MustCompile(`["'][a-zA-Z\s]{1,3}[^a-zA-Z\s"']{3,}`),
-	}
-	
-	for _, pattern := range binaryPatterns {
+	for _, pattern := range s.binaryPatterns {
 		if pattern.MatchString(command) {
 			return true
 		}
@@ -525,7 +538,7 @@ func (s *Scorer) hasRandomBinaryPatterns(command string) bool {
 		return true
 	}
 	
-	upperSeqCount := len(regexp.MustCompile(`[A-Z]{2,}`).FindAllString(command, -1))
+	upperSeqCount := len(s.upperSeqPattern.FindAllString(command, -1))
 	if upperSeqCount > 3 {
 		return true
 	}
@@ -629,22 +642,7 @@ func (s *Scorer) isGarbageToken(token string) bool {
 		return false
 	}
 	
-	garbagePatterns := []*regexp.Regexp{
-		regexp.MustCompile(`^[A-Za-z]{1,3}[0-9]{1,3}[A-Za-z]*$`),
-		regexp.MustCompile(`^[A-Za-z]*[|&$#@%^*~`+"`"+`]+[A-Za-z]*$`),
-		regexp.MustCompile(`[A-Za-z][0-9][A-Za-z][0-9]`),
-		regexp.MustCompile(`^[A-Z]{2,4}$`),
-		regexp.MustCompile(`[{}|&$#@%^*~;,`+"`"+`]{2,}`),
-		regexp.MustCompile(`^[a-z]{1,2}[,;:|&$@#%^*~`+"`"+`][a-z]*`),
-		regexp.MustCompile(`}[0-9a-zA-Z]+[|]`),
-		regexp.MustCompile(`[0-9]+[<>`+"`"+`][a-zA-Z]+`),
-		regexp.MustCompile(`[A-Za-z]{2,}[0-9]+\)[A-Z]`),
-		regexp.MustCompile(`^[a-z]{1}\s+}[0-9a-zA-Z]+`),
-		regexp.MustCompile(`[A-Za-z]+[`+"`"+`][0-9][A-Za-z]+`),
-		regexp.MustCompile(`\$[a-z][0-9]+\)`),
-	}
-	
-	for _, pattern := range garbagePatterns {
+	for _, pattern := range s.garbagePatterns {
 		if pattern.MatchString(token) {
 			return true
 		}
@@ -701,9 +699,9 @@ func (s *Scorer) hasRandomLookingPattern(token string) bool {
 		return true
 	}
 	
-	hasDigit := regexp.MustCompile(`[0-9]`).MatchString(token)
-	hasLetter := regexp.MustCompile(`[a-zA-Z]`).MatchString(token)
-	hasSpecial := regexp.MustCompile(`[^a-zA-Z0-9]`).MatchString(token)
+	hasDigit := s.digitPattern.MatchString(token)
+	hasLetter := s.letterPattern.MatchString(token)
+	hasSpecial := s.specialCharPattern.MatchString(token)
 	
 	if len(token) <= 4 && hasDigit && hasLetter {
 		return true
@@ -717,14 +715,7 @@ func (s *Scorer) hasRandomLookingPattern(token string) bool {
 }
 
 func (s *Scorer) isIncompleteFragment(command string) bool {
-	incompletePatterns := []*regexp.Regexp{
-		regexp.MustCompile(`\.\w+\([^)]*$`),
-		regexp.MustCompile(`\.\w+\.$`),
-		regexp.MustCompile(`\w+\($`),
-		regexp.MustCompile(`[{\[]$`),
-	}
-	
-	for _, pattern := range incompletePatterns {
+	for _, pattern := range s.incompletePatterns {
 		if pattern.MatchString(command) {
 			return true
 		}
@@ -757,21 +748,7 @@ func (s *Scorer) isNaturalLanguagePhrase(command string) bool {
 		}
 	}
 	
-	naturalPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`^\w+\s+(to|for|with|on|like|and|or)\s+\w+`),
-		regexp.MustCompile(`\w+\s+(may|might|will|can|should)\s+\w+`),
-		regexp.MustCompile(`\w+\s+(completion|script)\s+(for|v\d+)`),
-		regexp.MustCompile(`(requires|needs)\s+(a\s+)?\w+`),
-		regexp.MustCompile(`\w+\s+with\s+no\s+\w+`),
-		regexp.MustCompile(`\w+\s+errors?[;,.]`),
-		regexp.MustCompile(`(bash|zsh|fish)\s+(like|or|and)`),
-		regexp.MustCompile(`\w+\s+(shell|completion)\s+\w+`),
-		regexp.MustCompile(`\w+\s+(instead|effect|side|error|issue|problem)`),
-		regexp.MustCompile(`\w+\s+[a-z]+\.[a-z]+:`),
-		regexp.MustCompile(`^\w+\s+,\s*$`),
-	}
-	
-	for _, pattern := range naturalPatterns {
+	for _, pattern := range s.naturalPatterns {
 		if pattern.MatchString(commandLower) {
 			return true
 		}
@@ -781,19 +758,7 @@ func (s *Scorer) isNaturalLanguagePhrase(command string) bool {
 }
 
 func (s *Scorer) isHTMLCSSCommand(command string) bool {
-	htmlCSSPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`^tr\s*>\s*(td|th)`),
-		regexp.MustCompile(`^(tr|td|th|div|span|a|p|h[1-6])\s*[>.:]`),
-		regexp.MustCompile(`\.(success|warning|info|danger|active|hover)`),
-		regexp.MustCompile(`#[a-zA-Z][\w-]*`),
-		regexp.MustCompile(`<\/?\w+[^>]*>`),
-		regexp.MustCompile(`{[^}]*className[^}]*}`),
-		regexp.MustCompile(`(innerHTML|outerHTML|textContent)`),
-		regexp.MustCompile(`document\.(getElementById|querySelector)`),
-		regexp.MustCompile(`^[\w-]+\s*:\s*[^;]+;?$`),
-	}
-	
-	for _, pattern := range htmlCSSPatterns {
+	for _, pattern := range s.htmlCSSPatterns {
 		if pattern.MatchString(command) {
 			return true
 		}
@@ -803,19 +768,7 @@ func (s *Scorer) isHTMLCSSCommand(command string) bool {
 }
 
 func (s *Scorer) isConfigurationText(command string) bool {
-	configPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`^\w+\s*=\s*[^=]+$`),
-		regexp.MustCompile(`^\[[^\]]+\]$`),
-		regexp.MustCompile(`^<string>[^<]+</string>$`),
-		regexp.MustCompile(`^{{[^}]+}}[^{]*{{[^}]+}}$`),
-		regexp.MustCompile(`%[sdqvfgtbcoxX]`),
-		regexp.MustCompile(`\$\{[^}]+\}`),
-		regexp.MustCompile(`^[\w.]+\s*:\s*\w+$`),
-		regexp.MustCompile(`mime\.types`),
-		regexp.MustCompile(`/etc/\w+`),
-	}
-	
-	for _, pattern := range configPatterns {
+	for _, pattern := range s.configPatterns {
 		if pattern.MatchString(command) {
 			return true
 		}
@@ -828,10 +781,9 @@ func (s *Scorer) isCommandList(command string) bool {
 	if strings.Contains(command, " ") && len(strings.Fields(command)) > 5 {
 		words := strings.Fields(command)
 		commandCount := 0
-		config := newDefaultConfig()
 		
 		for _, word := range words {
-			if config.Heads[word] {
+			if s.cachedConfig.Heads[word] {
 				commandCount++
 			}
 		}
@@ -845,21 +797,7 @@ func (s *Scorer) isCommandList(command string) bool {
 }
 
 func (s *Scorer) isProgrammingLanguageFragment(command string) bool {
-	programmingPatterns := []*regexp.Regexp{
-		regexp.MustCompile(`(begin|end|className|const|var|let|function|return)`),
-		regexp.MustCompile(`\w+\([^)]*\)\s*\{`),
-		regexp.MustCompile(`\w+\.\w+\([^)]*\)`),
-		regexp.MustCompile(`^[a-zA-Z_]\w*\s*=\s*new\s+\w+`),
-		regexp.MustCompile(`\w+\[\d+\]`),
-		regexp.MustCompile(`\w+\?\.\w+`),
-		regexp.MustCompile(`\w+\s*&&\s*\w+`),
-		regexp.MustCompile(`^(public|private|protected|static)`),
-		regexp.MustCompile(`\w+\.prototype\.\w+`),
-		regexp.MustCompile(`^\w+\s*:\s*\w+\s*,`),
-		regexp.MustCompile(`^\w+\(\)[\w\s]*$`),
-	}
-	
-	for _, pattern := range programmingPatterns {
+	for _, pattern := range s.programmingPatterns {
 		if pattern.MatchString(command) {
 			return true
 		}
@@ -901,4 +839,113 @@ func (s *Scorer) RankByScore(commands []ExtractedCommand) []ExtractedCommand {
 	}
 	
 	return result
+}
+
+// Pre-compiled regex pattern functions
+func compileBinaryPatterns() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		regexp.MustCompile(`[/@#$%^&*]{3,}`),
+		regexp.MustCompile(`[A-Za-z0-9]{1}[@#$%^&*~` + "`" + `]{2,}[A-Za-z0-9]`),
+		regexp.MustCompile(`\w[<>|&$@#%^*~` + "`" + `]{2,}\w`),
+		regexp.MustCompile(`[/@]\w{1,3}[@#$%^&*~` + "`" + `|<>]{2,}`),
+		regexp.MustCompile(`\b[A-Za-z0-9]{1,2}[|<>&@#$%^*~` + "`" + `]{2,}[A-Za-z0-9]{1,2}\b`),
+		regexp.MustCompile(`^/[^/\s]*[@#$%^&*~` + "`" + `|<>=]{2,}`),
+		regexp.MustCompile(`\w+[}]{2,}\w*[{]{2,}\w*`),
+		regexp.MustCompile(`[A-Z]{1,3}[0-9]{1,3}[A-Z]{1,3}`),
+		regexp.MustCompile(`/[a-z0-9]{1,3}\s+[^a-zA-Z\s]{2,}`),
+		regexp.MustCompile(`[^a-zA-Z\s]{3,}[\s]+[^a-zA-Z\s]{2,}`),
+		regexp.MustCompile(`[*\(\)\[\]\\<>]{2,}`),
+		regexp.MustCompile(`[0-9]{2,}[a-zA-Z]{1,2}[0-9a-zA-Z*\^\$\(\)]{2,}`),
+		regexp.MustCompile(`\w{1,2}[*\^\$\(\)\[\]\\]{2,}\w{1,2}`),
+		regexp.MustCompile(`[/{]\s*[%,\*\^\$\(\)\[\]]{2,}`),
+		regexp.MustCompile(`[a-zA-Z]{1,2}[0-9\*\$\^\(\)\[\]\\]{3,}`),
+		regexp.MustCompile(`\$[a-zA-Z]{2,}[0-9\*\^\(\)\[\]\\]{2,}`),
+		regexp.MustCompile(`["'][a-zA-Z\s]{1,3}[^a-zA-Z\s"']{3,}`),
+	}
+}
+
+func compileGarbagePatterns() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		regexp.MustCompile(`^[A-Za-z]{1,3}[0-9]{1,3}[A-Za-z]*$`),
+		regexp.MustCompile(`^[A-Za-z]*[|&$#@%^*~` + "`" + `]+[A-Za-z]*$`),
+		regexp.MustCompile(`[A-Za-z][0-9][A-Za-z][0-9]`),
+		regexp.MustCompile(`^[A-Z]{2,4}$`),
+		regexp.MustCompile(`[{}|&$#@%^*~;,` + "`" + `]{2,}`),
+		regexp.MustCompile(`^[a-z]{1,2}[,;:|&$@#%^*~` + "`" + `][a-z]*`),
+		regexp.MustCompile(`}[0-9a-zA-Z]+[|]`),
+		regexp.MustCompile(`[0-9]+[<>` + "`" + `][a-zA-Z]+`),
+		regexp.MustCompile(`[A-Za-z]{2,}[0-9]+\)[A-Z]`),
+		regexp.MustCompile(`^[a-z]{1}\s+}[0-9a-zA-Z]+`),
+		regexp.MustCompile(`[A-Za-z]+[` + "`" + `][0-9][A-Za-z]+`),
+		regexp.MustCompile(`\$[a-z][0-9]+\)`),
+	}
+}
+
+func compileIncompletePatterns() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		regexp.MustCompile(`\.\w+\([^)]*$`),
+		regexp.MustCompile(`\.\w+\.$`),
+		regexp.MustCompile(`\w+\($`),
+		regexp.MustCompile(`[{\[]$`),
+	}
+}
+
+func compileNaturalPatterns() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		regexp.MustCompile(`^\w+\s+(to|for|with|on|like|and|or)\s+\w+`),
+		regexp.MustCompile(`\w+\s+(may|might|will|can|should)\s+\w+`),
+		regexp.MustCompile(`\w+\s+(completion|script)\s+(for|v\d+)`),
+		regexp.MustCompile(`(requires|needs)\s+(a\s+)?\w+`),
+		regexp.MustCompile(`\w+\s+with\s+no\s+\w+`),
+		regexp.MustCompile(`\w+\s+errors?[;,.]`),
+		regexp.MustCompile(`(bash|zsh|fish)\s+(like|or|and)`),
+		regexp.MustCompile(`\w+\s+(shell|completion)\s+\w+`),
+		regexp.MustCompile(`\w+\s+(instead|effect|side|error|issue|problem)`),
+		regexp.MustCompile(`\w+\s+[a-z]+\.[a-z]+:`),
+		regexp.MustCompile(`^\w+\s+,\s*$`),
+	}
+}
+
+func compileHTMLCSSPatterns() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		regexp.MustCompile(`^tr\s*>\s*(td|th)`),
+		regexp.MustCompile(`^(tr|td|th|div|span|a|p|h[1-6])\s*[>.:]`),
+		regexp.MustCompile(`\.(success|warning|info|danger|active|hover)`),
+		regexp.MustCompile(`#[a-zA-Z][\w-]*`),
+		regexp.MustCompile(`<\/?\w+[^>]*>`),
+		regexp.MustCompile(`{[^}]*className[^}]*}`),
+		regexp.MustCompile(`(innerHTML|outerHTML|textContent)`),
+		regexp.MustCompile(`document\.(getElementById|querySelector)`),
+		regexp.MustCompile(`^[\w-]+\s*:\s*[^;]+;?$`),
+	}
+}
+
+func compileConfigPatterns() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		regexp.MustCompile(`^\w+\s*=\s*[^=]+$`),
+		regexp.MustCompile(`^\[[^\]]+\]$`),
+		regexp.MustCompile(`^<string>[^<]+</string>$`),
+		regexp.MustCompile(`^{{[^}]+}}[^{]*{{[^}]+}}$`),
+		regexp.MustCompile(`%[sdqvfgtbcoxX]`),
+		regexp.MustCompile(`\$\{[^}]+\}`),
+		regexp.MustCompile(`^[\w.]+\s*:\s*\w+$`),
+		regexp.MustCompile(`mime\.types`),
+		regexp.MustCompile(`/etc/\w+`),
+	}
+}
+
+func compileProgrammingPatterns() []*regexp.Regexp {
+	return []*regexp.Regexp{
+		regexp.MustCompile(`(begin|end|className|const|var|let|function|return)`),
+		regexp.MustCompile(`\w+\([^)]*\)\s*\{`),
+		regexp.MustCompile(`\w+\.\w+\([^)]*\)`),
+		regexp.MustCompile(`^[a-zA-Z_]\w*\s*=\s*new\s+\w+`),
+		regexp.MustCompile(`\w+\[\d+\]`),
+		regexp.MustCompile(`\w+\?\.\w+`),
+		regexp.MustCompile(`\w+\s*&&\s*\w+`),
+		regexp.MustCompile(`^(public|private|protected|static)`),
+		regexp.MustCompile(`\w+\.prototype\.\w+`),
+		regexp.MustCompile(`^\w+\s*:\s*\w+\s*,`),
+		regexp.MustCompile(`^\w+\(\)[\w\s]*$`),
+	}
 }

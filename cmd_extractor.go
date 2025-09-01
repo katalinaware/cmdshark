@@ -81,13 +81,12 @@ func (e *CommandExtractor) extractFromCleanLines(text string) []ExtractedCommand
 func (e *CommandExtractor) splitLongLine(line string) []string {
 	var parts []string
 	
-	config := newDefaultConfig()
 	words := strings.Fields(line)
 	
 	var currentPart []string
 	
 	for i, word := range words {
-		if config.Heads[word] && len(currentPart) > 0 {
+		if e.config.Heads[word] && len(currentPart) > 0 {
 			if len(currentPart) > 0 {
 				parts = append(parts, strings.Join(currentPart, " "))
 			}
