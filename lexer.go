@@ -204,10 +204,10 @@ func (l *Lexer) IsNoiseToken(token string) bool {
 		regexp.MustCompile(`Copyright`),
 		regexp.MustCompile(`^(?:NS[A-Z]\w+|objc\w+|NSError\w*|CF\w+|kCF\w+)$`),
 		regexp.MustCompile(`^-(?:O[0-3s]?|g|Wall|W[\w-]+|f[a-z0-9-]+)$`),
-		regexp.MustCompile(`^__[A-Z_]+$`), // __TEXT, __DATA, etc.
-		regexp.MustCompile(`^_[a-z_]+$`),  // _main, _system, etc.
+		regexp.MustCompile(`^__[A-Z_]+$`),
+		regexp.MustCompile(`^_[a-z_]+$`),
 		regexp.MustCompile(`loader_\w+\.out$`),
-		regexp.MustCompile(`[^\x20-\x7E]{3,}`), // Non-printable characters
+		regexp.MustCompile(`[^\x20-\x7E]{3,}`),
 	}
 	
 	for _, pattern := range patterns {
