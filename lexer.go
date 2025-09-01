@@ -10,13 +10,16 @@ type Lexer struct {
 	printableFilter    *regexp.Regexp
 	pathHeadPattern    *regexp.Regexp
 	whitespacePattern  *regexp.Regexp
+	cachedConfig       *Config
 }
 
 func NewLexer() Lexer {
+	config := newDefaultConfig()
 	return Lexer{
 		printableFilter:   regexp.MustCompile(`[\x20-\x7E]+`),
 		pathHeadPattern:   regexp.MustCompile(`(?:/usr/\S+|/bin/\S+|/sbin/\S+)`),
 		whitespacePattern: regexp.MustCompile(`\s+`),
+		cachedConfig:      &config,
 	}
 }
 
@@ -108,10 +111,9 @@ func (l *Lexer) SplitStatements(s string) []string {
 
 func (l *Lexer) FindHeadStart(segment string) int {
 	tokens := strings.Fields(segment)
-	config := newDefaultConfig()
 	
 	for _, token := range tokens {
-		if config.Heads[token] || l.pathHeadPattern.MatchString(token) {
+		if l.cachedConfig.Heads[token] || l.pathHeadPattern.MatchString(token) {
 			return strings.Index(segment, token)
 		}
 	}
@@ -124,9 +126,7 @@ func (l *Lexer) NormalizeWhitespace(s string) string {
 }
 
 func (l *Lexer) IsHead(token string) bool {
-	config := newDefaultConfig()
-	
-	if config.Heads[token] {
+	if l.cachedConfig.Heads[token] {
 		return true
 	}
 	
@@ -204,10 +204,10 @@ func (l *Lexer) IsNoiseToken(token string) bool {
 		regexp.MustCompile(`Copyright`),
 		regexp.MustCompile(`^(?:NS[A-Z]\w+|objc\w+|NSError\w*|CF\w+|kCF\w+)$`),
 		regexp.MustCompile(`^-(?:O[0-3s]?|g|Wall|W[\w-]+|f[a-z0-9-]+)$`),
-		regexp.MustCompile(`^__[A-Z_]+$`), // __TEXT, __DATA, etc.
-		regexp.MustCompile(`^_[a-z_]+$`),  // _main, _system, etc.
+		regexp.MustCompile(`^__[A-Z_]+$`),
+		regexp.MustCompile(`^_[a-z_]+$`),
 		regexp.MustCompile(`loader_\w+\.out$`),
-		regexp.MustCompile(`[^\x20-\x7E]{3,}`), // Non-printable characters
+		regexp.MustCompile(`[^\x20-\x7E]{3,}`),
 	}
 	
 	for _, pattern := range patterns {

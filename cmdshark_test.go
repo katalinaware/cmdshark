@@ -10,10 +10,6 @@ import (
 	"unicode/utf8"
 )
 
-// =============================================================================
-// LEXER TESTS
-// =============================================================================
-
 func TestLexer_NormalizeStrings_EdgeCases(t *testing.T) {
 	lexer := NewLexer()
 	
@@ -60,7 +56,7 @@ func TestLexer_NormalizeStrings_EdgeCases(t *testing.T) {
 		{
 			name:     "Unicode characters", 
 			input:    []string{"curl ñoño", "测试"},
-			expected: []string{"curl oo"}, // Only ASCII parts are extracted
+			expected: []string{"curl oo"},
 		},
 		{
 			name:     "Null bytes",
@@ -204,12 +200,12 @@ func TestLexer_HasTooMuchBinaryData_BoundaryConditions(t *testing.T) {
 		},
 		{
 			name:     "Exactly 20% non-printable",
-			input:    "hell\x01", // 5 chars, 1 non-printable = 20%
+			input:    "hell\x01",
 			expected: false,
 		},
 		{
 			name:     "Over 20% non-printable",
-			input:    "hel\x01\x02", // 5 chars, 2 non-printable = 40%
+			input:    "hel\x01\x02",
 			expected: true,
 		},
 		{
@@ -254,7 +250,7 @@ func TestLexer_IsNoiseToken_Comprehensive(t *testing.T) {
 		
 		{"Empty", "", false},
 		{"Single underscore", "_", false},
-		{"Double underscore", "__", true}, // This matches the pattern
+		{"Double underscore", "__", true},
 	}
 	
 	for _, tc := range testCases {
@@ -266,10 +262,6 @@ func TestLexer_IsNoiseToken_Comprehensive(t *testing.T) {
 		})
 	}
 }
-
-// =============================================================================
-// PARSER TESTS
-// =============================================================================
 
 func TestParser_FindSeedPositions_EdgeCases(t *testing.T) {
 	parser := NewParser()
@@ -320,7 +312,7 @@ func TestParser_FindSeedPositions_EdgeCases(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result := parser.FindSeedPositions(tc.input)
 			if result == nil {
-				result = []int{} // Convert nil to empty slice for comparison
+				result = []int{}
 			}
 			if !reflect.DeepEqual(result, tc.expected) {
 				t.Errorf("Expected %v, got %v", tc.expected, result)
@@ -435,10 +427,6 @@ func TestParser_QuoteIfNeeded_EdgeCases(t *testing.T) {
 		})
 	}
 }
-
-// =============================================================================
-// SCORER TESTS
-// =============================================================================
 
 func TestScorer_ScoreCandidate_EdgeCases(t *testing.T) {
 	scorer := NewScorer()
@@ -652,12 +640,12 @@ func TestScorer_ContainsBinaryGarbage_BoundaryConditions(t *testing.T) {
 		},
 		{
 			name:     "High percentage non-printable",
-			command:  "hello\x01\x02\x03", // 8 chars, 3 non-printable = 37.5%
+			command:  "hello\x01\x02\x03",
 			expected: true,
 		},
 		{
 			name:     "Low percentage non-printable",
-			command:  "hello world\x01", // 12 chars, 1 non-printable = 8.3%
+			command:  "hello world\x01",
 			expected: false,
 		},
 		{
@@ -764,10 +752,6 @@ func TestScorer_FilterByConfidence_BoundaryConditions(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// COMMAND EXTRACTOR INTEGRATION TESTS
-// =============================================================================
-
 func TestCommandExtractor_Integration_RealWorldSamples(t *testing.T) {
 	extractor := NewCommandExtractor()
 	
@@ -862,13 +846,13 @@ func TestCommandExtractor_Integration_FalsePositiveFiltering(t *testing.T) {
 	extractor := NewCommandExtractor()
 	
 	falsePositives := []string{
-		"/usr/lib/dyld",                    // Just a library path
-		"/System/Library/Frameworks/",     // Framework path
-		"__TEXT__DATA__LINKEDIT_main_system___stderrp___stdinp", // Pure binary garbage
-		"Usage: this is help text for a command", // Help text
-		"Copyright (c) 2023 Apple Inc.",   // Copyright notice
-		"NSObject NSString CFAllocatorDefault", // Framework symbols
-		strings.Repeat("x", 1000),         // Very long string
+		"/usr/lib/dyld",
+		"/System/Library/Frameworks/",
+		"__TEXT__DATA__LINKEDIT_main_system___stderrp___stdinp",
+		"Usage: this is help text for a command",
+		"Copyright (c) 2023 Apple Inc.",
+		"NSObject NSString CFAllocatorDefault",
+		strings.Repeat("x", 1000),
 	}
 	
 	for _, input := range falsePositives {
@@ -888,9 +872,9 @@ func TestCommandExtractor_Integration_DeduplicationLogic(t *testing.T) {
 	
 	input := []string{
 		"bash -c echo hello",
-		"bash  -c  echo  hello", // Same command with extra spaces
-		"bash -c echo world",    // Different command
-		"bash -c echo hello",    // Exact duplicate
+		"bash  -c  echo  hello",
+		"bash -c echo world",
+		"bash -c echo hello",
 	}
 	
 	commands := extractor.ExtractCommands(input)
@@ -968,10 +952,6 @@ func TestCommandExtractor_Integration_ConfigurationEffects(t *testing.T) {
 		})
 	}
 }
-
-// =============================================================================
-// MALFORMED INPUT TESTS
-// =============================================================================
 
 func TestMalformedInput_InvalidUTF8(t *testing.T) {
 	extractor := NewCommandExtractor()
@@ -1061,13 +1041,13 @@ func TestMalformedInput_UnbalancedQuotes(t *testing.T) {
 	scorer := NewScorer()
 	
 	malformedQuotes := []string{
-		`bash -c "echo hello`,              // Missing closing quote
-		`echo 'hello world`,                // Missing closing single quote
-		`echo "hello 'world" test'`,        // Mismatched quotes
-		`bash -c 'echo "nested' quotes"`,   // Nested quote mismatch
-		`echo "hello\" world"`,             // Escaped quote at end
-		`curl -d '{"key": "value"}'`,       // JSON in single quotes (valid)
-		`bash -c "echo \"hello world\""`,   // Properly escaped quotes
+		`bash -c "echo hello`,
+		`echo 'hello world`,
+		`echo "hello 'world" test'`,
+		`bash -c 'echo "nested' quotes"`,
+		`echo "hello\" world"`,
+		`curl -d '{"key": "value"}'`,
+		`bash -c "echo \"hello world\""`,
 	}
 	
 	for _, input := range malformedQuotes {
@@ -1176,10 +1156,10 @@ func TestMalformedInput_RecoveryFromPanic(t *testing.T) {
 	extractor := NewCommandExtractor()
 	
 	panicInputs := []string{
-		string([]byte{0xFF, 0xFF, 0xFF, 0xFF}), // Invalid UTF-8
-		strings.Repeat("(", 1000),              // Unbalanced parens
-		strings.Repeat(`"`, 1001),              // Unbalanced quotes (odd number)
-		"\x00\x00\x00\x00bash\x00\x00\x00\x00", // Null bytes around command
+		string([]byte{0xFF, 0xFF, 0xFF, 0xFF}),
+		strings.Repeat("(", 1000),
+		strings.Repeat(`"`, 1001),
+		"\x00\x00\x00\x00bash\x00\x00\x00\x00",
 	}
 	
 	for i, input := range panicInputs {
@@ -1197,10 +1177,6 @@ func TestMalformedInput_RecoveryFromPanic(t *testing.T) {
 		})
 	}
 }
-
-// =============================================================================
-// PERFORMANCE AND MEMORY TESTS
-// =============================================================================
 
 func BenchmarkLexer_NormalizeStrings_Small(b *testing.B) {
 	lexer := NewLexer()
@@ -1263,7 +1239,7 @@ func TestMemoryUsage_LargeInputProcessing(t *testing.T) {
 	
 	memoryUsed := int64(m2.Alloc) - int64(m1.Alloc)
 	if memoryUsed < 0 {
-		memoryUsed = 0 // Handle underflow
+		memoryUsed = 0
 	}
 	
 	t.Logf("Memory used for large input processing: %d bytes", memoryUsed)
@@ -1310,10 +1286,6 @@ func TestPerformance_ExtractorScalability(t *testing.T) {
 		})
 	}
 }
-
-// =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
 
 func TestCommandExtractor_NaturalLanguageFiltering(t *testing.T) {
 	extractor := NewCommandExtractor()
@@ -1372,7 +1344,6 @@ func TestCommandExtractor_NaturalLanguageFiltering(t *testing.T) {
 	})
 }
 
-// Helper function for minimum
 func minInt(a, b int) int {
 	if a < b {
 		return a

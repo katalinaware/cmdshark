@@ -81,13 +81,12 @@ func (e *CommandExtractor) extractFromCleanLines(text string) []ExtractedCommand
 func (e *CommandExtractor) splitLongLine(line string) []string {
 	var parts []string
 	
-	config := newDefaultConfig()
 	words := strings.Fields(line)
 	
 	var currentPart []string
 	
 	for i, word := range words {
-		if config.Heads[word] && len(currentPart) > 0 {
+		if e.config.Heads[word] && len(currentPart) > 0 {
 			if len(currentPart) > 0 {
 				parts = append(parts, strings.Join(currentPart, " "))
 			}
@@ -195,7 +194,7 @@ func (e *CommandExtractor) extractFromSegment(segment string) *ExtractedCommand 
 }
 
 func (e *CommandExtractor) isLikelyFalsePositive(cmd string) bool {
-	if len(cmd) > 800 {  // Increased from 500
+	if len(cmd) > 800 {
 		return true
 	}
 	
@@ -219,22 +218,22 @@ func (e *CommandExtractor) isLikelyFalsePositive(cmd string) bool {
 		}
 	}
 	
-	if sectionCount >= 5 {  // Increased from 3
+	if sectionCount >= 5 {
 		return true
 	}
 	
 	tokens := strings.Fields(cmd)
-	if len(tokens) > 30 {  // Increased from 20
+	if len(tokens) > 30 {
 		commandTokens := 0
 		for _, token := range tokens {
 			if e.lexer.IsHead(token) || strings.HasPrefix(token, "-") || 
 			   strings.Contains(token, "http") || strings.Contains(token, ".") ||
-			   strings.Contains(token, "/") {  // Added path-like tokens
+			   strings.Contains(token, "/") {
 				commandTokens++
 			}
 		}
 		
-		if float64(commandTokens)/float64(len(tokens)) < 0.15 {  // Reduced from 0.2
+		if float64(commandTokens)/float64(len(tokens)) < 0.15 {
 			return true
 		}
 	}
@@ -417,7 +416,7 @@ func (e *CommandExtractor) isJustLibraryPath(cmd string) bool {
 	
 	tokens := strings.Fields(cmd)
 	if len(tokens) != 1 {
-		return false // Has multiple tokens, might be a real command
+		return false
 	}
 	
 	path := tokens[0]

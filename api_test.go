@@ -90,7 +90,7 @@ func TestExtractor_NaturalLanguageFiltering(t *testing.T) {
 	validCommands := []string{
 		"killall Terminal",
 		"ditto -c -k file.zip",
-		"/bin/sh",
+		"/bin/sh -c 'echo test'",
 	}
 	
 	for _, testCase := range validCommands {
